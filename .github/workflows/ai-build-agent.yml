@@ -1,0 +1,111 @@
+name: Universal AI Build Agent
+on:
+  push:
+    branches: [main, develop, master]
+  pull_request:
+    branches: [main, develop, master]
+env:
+  AI_MODEL: "gpt-4-turbo-preview"
+  MAX_ERROR_LENGTH: "10000"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@v4
+    # Set up Python for agent scripts
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    # Install agent dependencies
+    - name: Install packages
+      run: |
+        pip install python-dotenv requests openai pyyaml
+    # Create credentials.env from GitHub Secrets
+    - name: Setup credentials
+      run: |
+        cat << EOF > credentials.env
+        OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+        SMTP_SERVER=${{ secrets.SMTP_SERVER || 'smtp.gmail.com' }}
+        SMTP_PORT=${{ secrets.SMTP_PORT || '587' }}
+        SMTP_USER=${{ secrets.SMTP_USER }}
+        SMTP_PASS=${{ secrets.SMTP_PASS }}
+        RECIPIENT_EMAIL=${{ secrets.RECIPIENT_EMAIL }}
+        EOF
+    # Detect project type (creates project-type.env)
+    - name: Detect project type
+      run: python .github/scripts/detect_project_type.py
+    # Load both env files
+    - name: Load environment
+      run: |
+        cat project-type.env >> $GITHUB_ENV
+        cat credentials.env >> $GITHUB_ENV
+    # Language-specific setup (unchanged)
+    - name: Set up Node.js
+      if: env.PROJECT_TYPE == 'nodejs'
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION || '18.x' }}
+    # Python setup
+    - name: Set up Python for project
+      if: env.PROJECT_TYPE == 'python'
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION || '3.10' }}
+    # Java setup
+    - name: Set up JDK
+      if: env.PROJECT_TYPE == 'java' || env.PROJECT_TYPE == 'gradle' || env.PROJECT_TYPE == 'maven'
+      uses: actions/setup-java@v3
+      with:
+        java-version: ${{ env.JAVA_VERSION || '17' }}
+        distribution: 'temurin'
+    # .NET setup
+    - name: Set up .NET
+      if: env.PROJECT_TYPE == 'dotnet'
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION || '7.0.x' }}
+    # Go setup
+    - name: Set up Go
+      if: env.PROJECT_TYPE == 'go'
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION || '1.19' }}
+    # Ruby setup
+    - name: Set up Ruby
+      if: env.PROJECT_TYPE == 'ruby'
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: ${{ env.RUBY_VERSION || '3.2' }}
+        bundler-cache: true
+    # PHP setup
+    - name: Set up PHP
+      if: env.PROJECT_TYPE == 'php'
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ env.PHP_VERSION || '8.2' }}
+    # Rust setup
+    - name: Set up Rust
+      if: env.PROJECT_TYPE == 'rust'
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: ${{ env.RUST_VERSION || 'stable' }}
+    # Install project dependencies
+    - name: Install dependencies
+      run: python .github/scripts/install_dependencies.py
+    # Build project
+    - name: Build project
+      id: build
+      continue-on-error: true
+      run: python .github/scripts/build_project.py
+    # Analyze and fix errors
+    - name: Analyze and fix
+      if: steps.build.outcome == 'failure'
+      run: python .github/scripts/analyze_and_fix_errors.py
+    # Deploy/notify
+    - name: Handle success
+      if: steps.build.outcome == 'success'
+      run: python .github/scripts/deploy_or_notify.py
