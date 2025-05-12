@@ -83,6 +83,7 @@ def build_project():
             # Save error for analysis
             # Check if output is None and provide a default value if it is
             error_content = output if output is not None else "No error details available"
+            logger.info("Errors in build: ", error_content)
             with open('build_errors.txt', 'w') as f:
                 f.write(error_content)
            
