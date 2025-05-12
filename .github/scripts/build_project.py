@@ -39,9 +39,17 @@ def run_command(command, shell=False, output_file=None):
         logger.error(f"Command failed with exit code {e.returncode}")
         if output_file:
             logger.error(f"Error output saved to {output_file}")
+            # Read the error output from the file to return it
+            try:
+                with open(output_file, 'r') as f:
+                    error_output = f.read()
+                return False, error_output
+            except Exception as read_err:
+                logger.error(f"Could not read error output: {read_err}")
+                return False, f"Command failed with exit code {e.returncode}"
         else:
             logger.error(f"Error output: {e.stderr}")
-        return False, e.stderr
+            return False, e.stderr
 
 def build_project():
     """Build the project based on detected project type"""
@@ -73,8 +81,10 @@ def build_project():
             logger.error("Build failed")
            
             # Save error for analysis
+            # Check if output is None and provide a default value if it is
+            error_content = output if output is not None else "No error details available"
             with open('build_errors.txt', 'w') as f:
-                f.write(output)
+                f.write(error_content)
            
             sys.exit(1)
         else:
@@ -128,8 +138,10 @@ def build_project():
                         success, output = run_command(fallback_cmd, shell=True, output_file=log_file)
                 
                 if not success:
+                    # Check if output is None and provide a default value if it is
+                    error_content = output if output is not None else "No error details available"
                     with open('build_errors.txt', 'w') as f:
-                        f.write(output)
+                        f.write(error_content)
                     sys.exit(1)
                 else:
                     logger.info("Build succeeded after dependency installation")
